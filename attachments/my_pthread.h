@@ -7,7 +7,7 @@
 #define TIME_QUANTUM_MS 500000 // Time quantum in microseconds
 
 /* Thread ID */
-typedef uint my_pthread_t;
+typedef unsigned int my_pthread_t;
 
 /* Thread Status Enum */
 typedef enum threadStatus {
@@ -17,11 +17,10 @@ typedef enum threadStatus {
 } status_t;
 
 /*  Thread Contol Block */
-typedef struct threadControlBlock{
+typedef struct threadControlBlock {
   my_pthread_t tid;   // Thread ID
   status_t status;    // Thread Status
   ucontext_t context; // Ucontext
-  struct threadControlBlock* next;
 } my_pthread_tcb;
 
 
