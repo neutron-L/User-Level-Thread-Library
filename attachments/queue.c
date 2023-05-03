@@ -14,12 +14,14 @@ struct Queue
 };
 
 static QNode *free_node_list;
-
+static int queue_counts;
 static QNode *get_node();
 static void free_node(QNode *);
 
 Queue *init_queue()
 {
+    ++queue_counts;
+
     Queue *q = (Queue *)malloc(sizeof(Queue));
     if (q)
         q->head = q->tail = NULL;
@@ -42,7 +44,7 @@ void *queue_pop(Queue *q)
     return obj;
 }
 
-void * queue_front(Queue * q)
+void *queue_front(Queue *q)
 {
     return (queue_empty(q)) ? NULL : q->head->pval;
 }
@@ -85,16 +87,20 @@ void destroy_queue(Queue *q, void (*free_val)(void *))
         free_node(tmp);
     }
 
-    // free free_list
-    cur = free_node_list;
-    while (cur)
-    {
-        QNode *tmp = cur;
-        cur = cur->next;
-        free(tmp);
-    }
-    free_node_list = NULL;
+    --queue_counts;
 
+    if (!queue_counts)
+    {
+        // free free_list
+        cur = free_node_list;
+        while (cur)
+        {
+            QNode *tmp = cur;
+            cur = cur->next;
+            free(tmp);
+        }
+        free_node_list = NULL;
+    }
     free(q);
 }
 
