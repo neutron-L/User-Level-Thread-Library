@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -g
 
-all: ThreadRun ThreadJoin MultiThreadRun MultiThreadJoin MultiThreadYield
+all: ThreadRun ThreadJoin MultiThreadRun MultiThreadJoin MultiThreadYield testQueue
 
 ThreadRun: ThreadRun.c my_pthread.h my_pthread.c
 	$(CC) $(CFLAGS) ThreadRun.c my_pthread.c -o ThreadRun
@@ -18,5 +18,8 @@ MultiThreadJoin: MultiThreadJoin.c my_pthread.h my_pthread.c
 MultiThreadYield: MultiThreadYield.c my_pthread.h my_pthread.c
 	$(CC) $(CFLAGS) MultiThreadYield.c my_pthread.c -o MultiThreadYield
 
+testQueue:	test_queue.c queue.c queue.h
+	$(CC) $(CFLAGS) queue.c test_queue.c -o testQueue
+
 clean:
-	rm -f ThreadRun TheadJoin MultiThreadRun MultiThreadJoin MultiThreadYield
+	rm -f ThreadRun TheadJoin MultiThreadRun MultiThreadJoin MultiThreadYield testQueue
