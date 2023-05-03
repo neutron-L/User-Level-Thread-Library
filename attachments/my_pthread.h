@@ -26,6 +26,7 @@ typedef struct threadControlBlock {
   status_t status;    // Thread Status
   ucontext_t context; // Ucontext
 
+char * stack; // thread stack
   Queue * wait_queue; // threads who joins it
 } my_pthread_tcb;
 
