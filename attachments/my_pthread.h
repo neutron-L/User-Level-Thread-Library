@@ -4,7 +4,11 @@
 #include <stdlib.h>
 #include <ucontext.h>
 
+#include "queue.h"
+
+
 #define TIME_QUANTUM_MS 500000 // Time quantum in microseconds
+#define STACK_SIZE 32768
 
 /* Thread ID */
 typedef unsigned int my_pthread_t;
@@ -12,7 +16,7 @@ typedef unsigned int my_pthread_t;
 /* Thread Status Enum */
 typedef enum threadStatus {
 	RUNNABLE,   // Thread can be run
-  SLEEP,      // Thread is currently asleep
+    SLEEP,      // Thread is currently asleep
 	FINISHED    // Thread has finished execution
 } status_t;
 
@@ -21,6 +25,8 @@ typedef struct threadControlBlock {
   my_pthread_t tid;   // Thread ID
   status_t status;    // Thread Status
   ucontext_t context; // Ucontext
+
+  Queue * wait_queue; // threads who joins it
 } my_pthread_tcb;
 
 
