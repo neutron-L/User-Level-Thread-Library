@@ -120,18 +120,26 @@ void test_int_queue()
     int d = 4;
 
     Queue * que = init_queue();
-    assert(queue_empty(que)); // 1
-    queue_push(que, &a);
+    assert(queue_empty(que)); 
+    assert(queue_size(que) == 0);
+
+    queue_push(que, &a);     // 1
+    assert(queue_size(que) == 1);
     assert(!queue_empty(que)); 
+
     int * p = queue_search(que, &a, cmp_int); 
     assert(p && *p == a);
     queue_push(que, &b); // 1 2
+    assert(queue_size(que) == 2);
     p = queue_pop(que); // 2
+    assert(queue_size(que) == 1);
     queue_push(que, p); // 2 1
+    assert(queue_size(que) == 2);
     p = queue_search(que, &b, cmp_int);
     assert(p);
     queue_push(que, p); // 2 1 2
     queue_push(que, &c); // 2 1 2 3
+    assert(queue_size(que) == 4);
     p = queue_pop(que);
     assert(*p == 2);
     p = queue_pop(que);
@@ -143,6 +151,7 @@ void test_int_queue()
 
     p = queue_pop(que); //
     assert(!p); 
+    assert(queue_size(que) == 0);
 
 
     queue_push(que, &d); 
