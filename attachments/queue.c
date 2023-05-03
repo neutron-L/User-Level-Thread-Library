@@ -42,6 +42,11 @@ void *queue_pop(Queue *q)
     return obj;
 }
 
+void * queue_front(Queue * q)
+{
+    return (queue_empty(q)) ? NULL : q->head->pval;
+}
+
 void queue_push(Queue *q, void *obj)
 {
     QNode *node = get_node();
