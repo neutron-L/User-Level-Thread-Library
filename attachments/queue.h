@@ -11,6 +11,8 @@ void * queue_pop(Queue *);
 void * queue_front(Queue *);
 /* return 1 if queue is empty else return 0 */
 int queue_empty(Queue *);
+/* return length of queue */
+size_t queue_size(Queue *);
 /* push a new item to queue */
 void queue_push(Queue *, void *);
 /* search an obj in the queue that matches the cmp function */

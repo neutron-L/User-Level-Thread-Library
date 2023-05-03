@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include "queue.h"
 
@@ -11,6 +12,7 @@ struct Queue
 {
     QNode *head;
     QNode *tail;
+    size_t length;
 };
 
 static QNode *free_node_list;
@@ -25,6 +27,8 @@ Queue *init_queue()
     Queue *q = (Queue *)malloc(sizeof(Queue));
     if (q)
         q->head = q->tail = NULL;
+    q->length = 0;
+
     return q;
 }
 
@@ -41,6 +45,7 @@ void *queue_pop(Queue *q)
 
     if (!q->head)
         q->tail = NULL;
+    --q->length;
     return obj;
 }
 
@@ -59,11 +64,17 @@ void queue_push(Queue *q, void *obj)
     q->tail = node;
     if (!q->head)
         q->head = node;
+    ++q->length;
 }
 
 int queue_empty(Queue *q)
 {
-    return !q->head && !q->tail;
+    return !q->head && !q->tail && !q->length; // 任一一个条件就足够判断了，但是这三个条件必须同时成立
+}
+
+size_t queue_size(Queue *q)
+{
+    return q->length;
 }
 
 void *queue_search(Queue *q, void *target, int (*cmp)(void *, void *))
