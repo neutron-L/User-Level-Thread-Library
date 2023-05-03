@@ -22,7 +22,7 @@ static int first = 1;
 static char stack[STACK_SIZE];
 
 static my_pthread_tcb * alloc_tcb(void *(*function)(void *), void *arg);
-static void free_tcb(my_pthread_tcb *, ucontext_t *);
+static void free_tcb(my_pthread_tcb *);
 static void * stub(void *(*function)(void *), void *arg);
 static int equal(void *, void *);
 
@@ -34,6 +34,7 @@ void schedule(int signum)
     // Implement Here
     BLOCK_ALARM;
 
+    printf("threads %d\n", queue_size(task_queue));
     my_pthread_tcb *current_tcb = queue_pop(task_queue);
     my_pthread_tcb * next_tcb;
 
@@ -43,17 +44,19 @@ void schedule(int signum)
         getcontext(&free_context);
         free_context.uc_stack.ss_sp = stack;
         free_context.uc_stack.ss_size = STACK_SIZE;
-        next_tcb = queue_front(task_queue);
-        makecontext(&free_context, free_tcb, 2, current_tcb, &next_tcb->context);
+        makecontext(&free_context, free_tcb, 1, current_tcb);
         setcontext(&free_context);
     }
     else
     {
-        queue_push(task_queue, current_tcb);
         next_tcb = queue_front(task_queue);
 
         UNBLOCK_ALARM;
-        printf("Alarm\n");
+        if (current_tcb->status != SLEEP)
+        {
+            printf("Main\n");
+            queue_push(task_queue, current_tcb);
+        }
         swapcontext(&current_tcb->context, &next_tcb->context);
     }
 }
@@ -120,16 +123,20 @@ void my_pthread_yield()
  */
 void my_pthread_join(my_pthread_t thread)
 {
-
     // Implement Here //
     BLOCK_ALARM;
     // Moves the thread at the head of the queue to the waiting queue of the specified thread
-    my_pthread_tcb * current_tcb = queue_pop(task_queue);
+    my_pthread_tcb * current_tcb = queue_front(task_queue);
     current_tcb->status = SLEEP;
     my_pthread_tcb * tcb = queue_search(task_queue, &thread, equal);
-    queue_push(tcb->wait_queue, current_tcb);
-    UNBLOCK_ALARM;
-    schedule(SIGUSR2);
+    if (tcb)
+    {
+        queue_push(tcb->wait_queue, current_tcb);
+        UNBLOCK_ALARM;
+        schedule(SIGUSR2);
+    }
+    else
+        UNBLOCK_ALARM;
 }
 
 /* Returns the thread id of the currently running thread
@@ -161,7 +168,6 @@ void my_pthread_exit()
 
 static void free_task_queue()
 {
-    printf("free task queue\n");
     BLOCK_ALARM;
     // 取消timer
     struct itimerval value;
@@ -193,9 +199,9 @@ static my_pthread_tcb * alloc_tcb(void *(*function)(void *), void *arg)
 }
 
 
-static void free_tcb(my_pthread_tcb * tcb, ucontext_t * context)
+static void free_tcb(my_pthread_tcb * tcb)
 {
-    printf("Free tcb\n");
+    printf("Free %d\n", tcb->tid);
     free(tcb->stack);
 
     // put the waiting threads to task queue
@@ -204,18 +210,21 @@ static void free_tcb(my_pthread_tcb * tcb, ucontext_t * context)
         my_pthread_tcb * sleep_tcb = queue_pop(tcb->wait_queue);
         queue_push(task_queue, sleep_tcb);
     }
-    printf("destroy\n");
     destroy_queue(tcb->wait_queue, NULL);
     free(tcb);
 
+    ucontext_t * context;
+    my_pthread_tcb * next_tcb = queue_front(task_queue);
+
+    printf("remain %d next %d\n", queue_size(task_queue), next_tcb->tid);
     // 如果当前只有main thread，释放task queue 并设置first 为初始值1
-    if (queue_size(task_queue) == 1)
+    if (queue_size(task_queue) == 1 && next_tcb == &main_tcb)
     {
         destroy_queue(task_queue, NULL);
         first = 1;
     }
 
-    setcontext(context);
+    setcontext(&next_tcb->context);
 }
 
 static void * stub(void *(*root)(void *), void *arg)
