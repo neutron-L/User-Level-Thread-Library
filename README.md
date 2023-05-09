@@ -13,3 +13,9 @@ It is recommended to compress the templates when distributing the assignments to
 
 - Concepts: Operating Systems, Threads, Scheduling
 - Languages: C
+
+### Note
+This is the origin URL: https://github.com/DaveedDomingo/User-Level-Thread-Library-Project.git
+After cloning the project, you can enter **git remote** to view the remote warehourepository server.
+The name of the repository server is handout.
+I found this project on GitHub and then went back to the initial version to complete the lab. You can also find initial version under the master branch, and my implementation version is under the main branch.
