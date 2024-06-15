@@ -12,7 +12,7 @@
 #define UNBLOCK_ALARM sigprocmask(SIG_SETMASK, &prev_mask, NULL)
 
 // Fill in Here //
-Queue *task_queue;
+Queue *task_queue, *finished_queue;
 static my_pthread_tcb main_tcb;
 static int next_tid;
 static int first = 1;
@@ -20,7 +20,7 @@ static int first = 1;
 static struct itimerval timer_value;
 
 // free exited thread resource
-static char stack[STACK_SIZE];
+static ucontext_t dummy_context;
 
 static void reset_clock();
 static my_pthread_tcb *alloc_tcb(void *(*function)(void *), void *arg);
@@ -36,33 +36,41 @@ void schedule(int signum)
     // Implement Here
     BLOCK_ALARM;
 
-    my_pthread_tcb *current_tcb = queue_pop(task_queue);
-    my_pthread_tcb *next_tcb;
-
-    if (current_tcb->status == FINISHED)
+    my_pthread_tcb *current_tcb, *next_tcb = NULL;
+    if (signum != SIGUSR1)
     {
-        ucontext_t free_context;
-        getcontext(&free_context);
-        free_context.uc_stack.ss_sp = stack;
-        free_context.uc_stack.ss_size = STACK_SIZE;
-        makecontext(&free_context, free_tcb, 1, current_tcb);
-        setcontext(&free_context);
-    }
-    else
-    {
+        current_tcb = queue_pop(task_queue);
+        next_tcb = NULL;
         queue_push(task_queue, current_tcb);
-        while ((next_tcb = queue_front(task_queue)))
-        {
-            if (next_tcb->status == RUNNABLE)
-                break;
-            next_tcb = queue_pop(task_queue);
-            assert(next_tcb->status == SLEEP);
-            queue_push(task_queue, next_tcb);
-        }
-        printf("Turn to %d thread\n", next_tcb->tid);
-        UNBLOCK_ALARM;
-        swapcontext(&current_tcb->context, &next_tcb->context);
     }
+
+    // if (current_tcb->status == FINISHED)
+    // {
+    //     ucontext_t free_context;
+    //     getcontext(&free_context);
+    //     free_context.uc_stack.ss_sp = stack;
+    //     free_context.uc_stack.ss_size = STACK_SIZE;
+    //     makecontext(&free_context, free_tcb, 1, current_tcb);
+    //     setcontext(&free_context);
+    // }
+    // else
+    // {
+    while ((next_tcb = queue_front(task_queue)))
+    {
+        if (next_tcb->status == RUNNABLE)
+            break;
+        next_tcb = queue_pop(task_queue);
+        assert(next_tcb->status == SLEEP);
+        queue_push(task_queue, next_tcb);
+    }
+    printf("Turn to %d thread %d\n", next_tcb->tid, next_tcb->status);
+    ucontext_t *store = (signum == SIGUSR1) ? &dummy_context : &current_tcb->context;
+    swapcontext(store, &next_tcb->context);
+    // }
+    // free finished task
+    while ((next_tcb = queue_pop(finished_queue)))
+        free_tcb(next_tcb);
+    UNBLOCK_ALARM;
 }
 
 /* Create a new TCB for a new thread execution context and add it to the queue
@@ -91,6 +99,7 @@ void my_pthread_create(my_pthread_t *thread, void *(*function)(void *), void *ar
 
         // create a task queue
         task_queue = init_queue();
+        finished_queue = init_queue();
 
         // init main TCB for main thread
         tcb = &main_tcb;
@@ -185,10 +194,26 @@ void my_pthread_exit()
 {
     // Implement Here //
     BLOCK_ALARM;
-    my_pthread_tcb *current_tcb = queue_front(task_queue);
-    current_tcb->status = FINISHED; // change state to finished
-    UNBLOCK_ALARM;
     printf("%d thread exit\n", my_pthread_self());
+    my_pthread_tcb *current_tcb = queue_pop(task_queue);
+    assert(current_tcb);
+    current_tcb->status = FINISHED; // change state to finished
+    queue_push(finished_queue, current_tcb);
+
+    // put the waiting threads to task queue
+    while (!queue_empty(current_tcb->wait_queue))
+    {
+        my_pthread_tcb *sleep_tcb = queue_pop(current_tcb->wait_queue);
+        --sleep_tcb->join_times;
+        if (!sleep_tcb->join_times)
+        {
+            printf("%d thread awake %d\n", current_tcb->tid, sleep_tcb->tid);
+            sleep_tcb->status = RUNNABLE;
+            queue_push(task_queue, sleep_tcb);
+        }
+    }
+
+    UNBLOCK_ALARM;
     schedule(SIGUSR1);
 }
 
@@ -211,10 +236,10 @@ static void free_task_queue()
     value.it_interval = value.it_value;
     setitimer(ITIMER_REAL, &value, NULL);
     signal(SIGALRM, SIG_IGN);
-    UNBLOCK_ALARM;  
+    UNBLOCK_ALARM;
 
     destroy_queue(task_queue, NULL);
-    task_queue = NULL;  
+    task_queue = NULL;
 }
 
 static my_pthread_tcb *alloc_tcb(void *(*function)(void *), void *arg)
@@ -235,33 +260,23 @@ static my_pthread_tcb *alloc_tcb(void *(*function)(void *), void *arg)
 
 static void free_tcb(my_pthread_tcb *tcb)
 {
+    printf("%d Free %d\n", ((my_pthread_tcb *)queue_front(task_queue))->tid, tcb->tid);
     free(tcb->stack);
 
-    // put the waiting threads to task queue
-    while (!queue_empty(tcb->wait_queue))
-    {
-        my_pthread_tcb *sleep_tcb = queue_pop(tcb->wait_queue);
-        --sleep_tcb->join_times;
-        if (!sleep_tcb->join_times)
-        {
-            printf("%d thread awake %d\n", tcb->tid, sleep_tcb->tid);
-            sleep_tcb->status = RUNNABLE;
-            // queue_push(task_queue, sleep_tcb);
-        }
-    }
+    
     destroy_queue(tcb->wait_queue, NULL);
     free(tcb);
 
-    ucontext_t *context;
-    my_pthread_tcb *next_tcb = queue_front(task_queue);
-    // 如果当前只有main thread，释放task queue 并设置first 为初始值1
-    if (queue_size(task_queue) == 1 && next_tcb == &main_tcb)
-    {
-        free_task_queue();
-        first = 1;
-    }
+    // ucontext_t *context;
+    // my_pthread_tcb *next_tcb = queue_front(task_queue);
+    // // 如果当前只有main thread，释放task queue 并设置first 为初始值1
+    // if (queue_size(task_queue) == 1 && next_tcb == &main_tcb)
+    // {
+    //     free_task_queue();
+    //     first = 1;
+    // }
 
-    setcontext(&next_tcb->context);
+    // setcontext(&next_tcb->context);
 }
 
 static void *stub(void *(*root)(void *), void *arg)

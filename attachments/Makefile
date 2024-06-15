@@ -22,4 +22,4 @@ testQueue:	test_queue.c queue.c queue.h
 	$(CC) $(CFLAGS) queue.c test_queue.c -o testQueue
 
 clean:
-	rm -f ThreadRun TheadJoin MultiThreadRun MultiThreadJoin MultiThreadYield testQueue
+	rm -f ThreadRun ThreadJoin MultiThreadRun MultiThreadJoin MultiThreadYield testQueue
