@@ -1,40 +1,36 @@
 #include <assert.h>
+#include <stdbool.h>
+
 #include "my_pthread.h"
 
-/* Scheduler State */
-
-#define BLOCK_ALARM            \
-    sigset_t mask, prev_mask;  \
-    sigemptyset(&mask);        \
-    sigaddset(&mask, SIGALRM); \
-    sigprocmask(SIG_BLOCK, &mask, &prev_mask)
-
-#define UNBLOCK_ALARM sigprocmask(SIG_SETMASK, &prev_mask, NULL)
 
 // Fill in Here //
 Queue *task_queue, *finished_queue;
 static my_pthread_tcb main_tcb;
 static int next_tid;
-static int first = 1;
 
 static struct itimerval timer_value;
 
 // free exited thread resource
 static ucontext_t dummy_context;
 
+static void schedule(int signum);
 static void reset_clock();
 static my_pthread_tcb *alloc_tcb(void *(*function)(void *), void *arg);
 static void free_tcb(my_pthread_tcb *);
 static void *stub(void *(*function)(void *), void *arg);
 static int equal(void *, void *);
 
+static inline void preempt_enable();
+static inline void preempt_disable();
+
 /* Scheduler Function
  * Pick the next runnable thread and swap contexts to start executing
  */
-void schedule(int signum)
+static void schedule(int signum)
 {
     // Implement Here
-    BLOCK_ALARM;
+    preempt_disable();
 
     my_pthread_tcb *current_tcb, *next_tcb = NULL;
     if (signum != SIGUSR1)
@@ -70,7 +66,7 @@ void schedule(int signum)
     // free finished task
     while ((next_tcb = queue_pop(finished_queue)))
         free_tcb(next_tcb);
-    UNBLOCK_ALARM;
+    preempt_enable();
 }
 
 /* Create a new TCB for a new thread execution context and add it to the queue
@@ -79,17 +75,18 @@ void schedule(int signum)
  */
 void my_pthread_create(my_pthread_t *thread, void *(*function)(void *), void *arg)
 {
+    static bool first = true;
     // Implement Here
     my_pthread_tcb *tcb;
 
-    BLOCK_ALARM;
+    preempt_disable();
 
     // The first time you call a library function, do some preparation work
     if (first)
     {
-        first = 0;
+        first = false;
         // set timer interrupt handler
-        if (signal(SIGALRM, schedule) == SIG_ERR)
+        if (signal(SIGVTALRM, schedule) == SIG_ERR)
         {
             perror("Signal error");
             exit(1);
@@ -116,7 +113,7 @@ void my_pthread_create(my_pthread_t *thread, void *(*function)(void *), void *ar
     *thread = tcb->tid;
     printf("Create %d thread\n", tcb->tid);
 
-    UNBLOCK_ALARM;
+    preempt_enable();
 }
 
 /* Give up the CPU and allow the next thread to run.
@@ -124,10 +121,10 @@ void my_pthread_create(my_pthread_t *thread, void *(*function)(void *), void *ar
 void my_pthread_yield()
 {
     // Implement Here
-    BLOCK_ALARM;
+    preempt_disable();
     printf("%d thread yield\n", my_pthread_self());
     reset_clock(); // reset clock
-    UNBLOCK_ALARM;
+    preempt_enable();
 
     schedule(SIGUSR2);
 }
@@ -138,12 +135,12 @@ void my_pthread_yield()
 void my_pthread_join(my_pthread_t thread)
 {
     // Implement Here //
-    BLOCK_ALARM;
+    preempt_disable();
     printf("%d want to join %d\n", my_pthread_self(), thread);
     if (!task_queue) // task queue 不存在，则只剩下一个main线程，直接返回即可
     {
         printf("Only Main thread\n");
-        UNBLOCK_ALARM;
+        preempt_enable();
         return;
     }
     // Moves the thread at the head of the queue to the waiting queue of the specified thread
@@ -156,14 +153,14 @@ void my_pthread_join(my_pthread_t thread)
         current_tcb->status = SLEEP;
         queue_push(tcb->wait_queue, current_tcb); // add myself to the tcb wait queue
         reset_clock();                            // reset clock
-        UNBLOCK_ALARM;
+        preempt_enable();
 
         schedule(SIGUSR2);
     }
     else
     {
         printf("%d thread has exited or no existed\n", thread);
-        UNBLOCK_ALARM;
+        preempt_enable();
     }
 }
 
@@ -173,7 +170,7 @@ my_pthread_t my_pthread_self()
 {
     // Implement Here //
     my_pthread_t tid;
-    BLOCK_ALARM;
+    preempt_disable();
     if (task_queue)
     {
         my_pthread_tcb *tcb = queue_front(task_queue);
@@ -182,7 +179,7 @@ my_pthread_t my_pthread_self()
     else
         tid = 0; // only main thread
 
-    UNBLOCK_ALARM;
+    preempt_enable();
 
     return tid; // temporary return, replace this
 }
@@ -193,7 +190,7 @@ my_pthread_t my_pthread_self()
 void my_pthread_exit()
 {
     // Implement Here //
-    BLOCK_ALARM;
+    preempt_disable();
     printf("%d thread exit\n", my_pthread_self());
     my_pthread_tcb *current_tcb = queue_pop(task_queue);
     assert(current_tcb);
@@ -213,7 +210,7 @@ void my_pthread_exit()
         }
     }
 
-    UNBLOCK_ALARM;
+    preempt_enable();
     schedule(SIGUSR1);
 }
 
@@ -223,20 +220,20 @@ static void reset_clock()
     timer_value.it_value.tv_usec = TIME_QUANTUM_MS;
     timer_value.it_interval.tv_sec = 0;
     timer_value.it_interval.tv_usec = TIME_QUANTUM_MS;
-    setitimer(ITIMER_REAL, &timer_value, NULL);
+    setitimer(ITIMER_VIRTUAL, &timer_value, NULL);
 }
 
 static void free_task_queue()
 {
-    BLOCK_ALARM;
+    preempt_disable();
     // 取消timer
     struct itimerval value;
     value.it_value.tv_sec = 0;
     value.it_value.tv_usec = 0;
     value.it_interval = value.it_value;
-    setitimer(ITIMER_REAL, &value, NULL);
-    signal(SIGALRM, SIG_IGN);
-    UNBLOCK_ALARM;
+    setitimer(ITIMER_VIRTUAL, &value, NULL);
+    signal(SIGVTALRM, SIG_IGN);
+    preempt_enable();
 
     destroy_queue(task_queue, NULL);
     task_queue = NULL;
@@ -292,4 +289,19 @@ static int equal(void *a, void *b)
     my_pthread_tcb *tcb = (my_pthread_tcb *)b;
 
     return *tid == tcb->tid ? 0 : 1;
+}
+
+
+static inline void preempt_enable() {
+    sigset_t mask;  
+    sigemptyset(&mask);        
+    sigaddset(&mask, SIGVTALRM); 
+    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+}
+
+static inline  void preempt_disable() {
+    sigset_t mask;  
+    sigemptyset(&mask);        
+    sigaddset(&mask, SIGVTALRM); 
+    sigprocmask(SIG_BLOCK, &mask, NULL);
 }

@@ -6,7 +6,7 @@
 
 #include "queue.h"
 
-#define TIME_QUANTUM_MS 500000 // Time quantum in microseconds
+// #define TIME_QUANTUM_MS 50000 // Time quantum in microseconds
 #define STACK_SIZE 32768
 
 /* Thread ID */
