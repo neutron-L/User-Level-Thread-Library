@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g
+CFLAGS = -g -DTIME_QUANTUM_MS=50000
 
 all: ThreadRun ThreadJoin MultiThreadRun MultiThreadJoin MultiThreadYield testQueue
 
